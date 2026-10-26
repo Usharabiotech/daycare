@@ -3,11 +3,14 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/db/client';
 import { attendance, bookings, dependants, invoices, locations, resources, staff } from '@/db/schema';
 import { getProvince, parentFeeMonthly, staffRequired } from '@/domain/rules/provinces';
+import { localDate, timeZoneFor } from '@/domain/time';
 import { DomainError } from '@/domain/types';
 import { occupancy, openSpaces, refreshPublished } from './capacity';
 
-export function todayISO(now = new Date()) {
-  return now.toISOString().slice(0, 10);
+/** Today's date where the centre is, so the attendance day turns over at the centre's midnight. */
+async function centreToday(locationId: string, now = new Date()) {
+  const [loc] = await getDb().select({ province: locations.province }).from(locations).where(eq(locations.id, locationId));
+  return localDate(timeZoneFor(loc?.province ?? ''), now);
 }
 
 export async function getLocation(locationId: string) {
@@ -20,7 +23,8 @@ export async function orgLocations(orgId: string) {
   return getDb().select().from(locations).where(eq(locations.orgId, orgId)).orderBy(asc(locations.name));
 }
 
-export async function dashboard(locationId: string, day = todayISO()) {
+export async function dashboard(locationId: string, day?: string) {
+  day ??= await centreToday(locationId);
   const db = getDb();
   const rooms = await db.select().from(resources).where(eq(resources.locationId, locationId)).orderBy(asc(resources.capacity));
   const occ = await occupancy(db, rooms.map((r) => r.id));
@@ -44,7 +48,8 @@ async function presentCountByRoom(locationId: string, day: string) {
   return m;
 }
 
-export async function roster(locationId: string, day = todayISO()) {
+export async function roster(locationId: string, day?: string) {
+  day ??= await centreToday(locationId);
   const db = getDb();
   const rows = await db
     .select({ booking: bookings, room: resources, childName: dependants.name })
@@ -67,7 +72,7 @@ export async function roster(locationId: string, day = todayISO()) {
 export async function toggleAttendance(bookingId: string, actor: { orgId: string }, now = new Date()) {
   const db = getDb();
   const [row] = await db
-    .select({ booking: bookings, orgId: locations.orgId })
+    .select({ booking: bookings, orgId: locations.orgId, province: locations.province })
     .from(bookings)
     .innerJoin(resources, eq(resources.id, bookings.resourceId))
     .innerJoin(locations, eq(locations.id, resources.locationId))
@@ -75,7 +80,7 @@ export async function toggleAttendance(bookingId: string, actor: { orgId: string
   if (!row) throw new DomainError('Enrolment not found.', 404);
   if (row.orgId !== actor.orgId) throw new DomainError('You do not manage this centre.', 403);
 
-  const day = todayISO(now);
+  const day = localDate(timeZoneFor(row.province), now);
   const [existing] = await db.select().from(attendance).where(and(eq(attendance.bookingId, bookingId), eq(attendance.day, day)));
   if (!existing) {
     await db.insert(attendance).values({ bookingId, day, checkInAt: now });
@@ -86,9 +91,10 @@ export async function toggleAttendance(bookingId: string, actor: { orgId: string
   }
 }
 
-export async function ratioStatus(locationId: string, day = todayISO()) {
+export async function ratioStatus(locationId: string, day?: string) {
   const db = getDb();
   const loc = await getLocation(locationId);
+  day ??= localDate(timeZoneFor(loc.province));
   const rules = getProvince(loc.province);
   const rooms = await db.select().from(resources).where(eq(resources.locationId, locationId)).orderBy(asc(resources.capacity));
   const team = await db.select().from(staff).where(eq(staff.locationId, locationId));
@@ -134,7 +140,7 @@ export interface BillingLine {
 export async function billingPreview(locationId: string): Promise<BillingLine[]> {
   const loc = await getLocation(locationId);
   const inProgram = (loc.attrs.fundingPrograms ?? []).length > 0;
-  const rows = await roster(locationId);
+  const rows = await roster(locationId, localDate(timeZoneFor(loc.province)));
   const fee = loc.baseFeeCents ?? 0;
   return rows.map((r) => {
     const pf = parentFeeMonthly({ province: loc.province, centreFeeMonthly: fee / 100, inProgram });

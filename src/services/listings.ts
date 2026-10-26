@@ -1,4 +1,4 @@
-import { and, asc, count, eq, inArray } from 'drizzle-orm';
+import { and, asc, count, eq, exists, gt, inArray, sql } from 'drizzle-orm';
 import { getDb } from '@/db/client';
 import { locations, resources } from '@/db/schema';
 import type { Location, Resource } from '@/db/schema';
@@ -61,42 +61,55 @@ function toListing(l: Location, rooms: Resource[], occ: Map<string, Occupancy>):
 
 export interface ListingPage {
   listings: Listing[];
-  /** Licensed childcare locations matching the city filter, before age/program/open narrowing or the cap. */
+  /** All locations matching the filters, before the `limit` cap. */
   total: number;
 }
 
-/** Public, family-facing search. Only shows rooms the centre has made public. */
+/**
+ * Public, family-facing search. Only shows rooms the centre has made public.
+ *
+ * Filtering, counting and paging happen in the database: the registry has thousands of
+ * centres, and a page shows a few dozen, so only those rows (and their rooms) are fetched.
+ */
 export async function searchListings(filter: ListingFilter = {}): Promise<ListingPage> {
   const db = getDb();
-  const cityWhere = and(eq(locations.vertical, 'childcare'), filter.city ? eq(locations.city, filter.city) : undefined);
+  // The rooms a family can see for this search: public, and in the age group asked for.
+  const visibleRoom = and(
+    eq(resources.isPublic, true),
+    filter.ageGroup ? sql`${resources.attrs}->>'ageGroup' = ${filter.ageGroup}` : undefined,
+  );
+  const where = and(
+    eq(locations.vertical, 'childcare'),
+    filter.city ? eq(locations.city, filter.city) : undefined,
+    // `->0` is NULL for a missing or empty array (and never errors on other shapes).
+    filter.onlyProgram ? sql`(${locations.attrs}->'fundingPrograms'->0) IS NOT NULL` : undefined,
+    // A centre shows only if it has a visible room — with an open space, when that was asked for.
+    exists(
+      db.select({ one: sql`1` }).from(resources).where(and(
+        eq(resources.locationId, locations.id),
+        visibleRoom,
+        filter.onlyOpen ? gt(resources.publishedOpen, 0) : undefined,
+      )),
+    ),
+  );
 
-  const [{ total }] = await db.select({ total: count() }).from(locations).where(cityWhere);
+  const [{ total }] = await db.select({ total: count() }).from(locations).where(where);
+  if (total === 0) return { listings: [], total: 0 };
 
-  const locs = await db.select().from(locations).where(cityWhere).orderBy(asc(locations.city), asc(locations.name));
-  if (locs.length === 0) return { listings: [], total: 0 };
+  // Several real centres share a name in the same city, so `id` breaks ties to keep pages stable.
+  const ordered = db.select().from(locations).where(where).orderBy(asc(locations.city), asc(locations.name), asc(locations.id));
+  const locs = filter.limit ? await ordered.limit(filter.limit) : await ordered;
 
   const rooms = await db
     .select()
     .from(resources)
-    .where(and(inArray(resources.locationId, locs.map((l) => l.id)), eq(resources.isPublic, true)))
+    .where(and(inArray(resources.locationId, locs.map((l) => l.id)), visibleRoom))
     .orderBy(asc(resources.capacity));
   const roomsByLoc = new Map<string, Resource[]>();
   for (const r of rooms) (roomsByLoc.get(r.locationId) ?? roomsByLoc.set(r.locationId, []).get(r.locationId)!).push(r);
 
-  // Narrow by age/program/open before computing occupancy, so we only count waitlists for what we show.
-  const matched: { loc: Location; rooms: Resource[] }[] = [];
-  for (const l of locs) {
-    if (filter.onlyProgram && (l.attrs.fundingPrograms ?? []).length === 0) continue;
-    let lr = roomsByLoc.get(l.id) ?? [];
-    if (filter.ageGroup) lr = lr.filter((r) => r.attrs.ageGroup === filter.ageGroup);
-    if (lr.length === 0) continue;
-    if (filter.onlyOpen && !lr.some((r) => (r.publishedOpen ?? 0) > 0)) continue;
-    matched.push({ loc: l, rooms: lr });
-  }
-
-  const shown = filter.limit ? matched.slice(0, filter.limit) : matched;
-  const occ = await occupancy(db, shown.flatMap((m) => m.rooms.map((r) => r.id)));
-  return { listings: shown.map((m) => toListing(m.loc, m.rooms, occ)), total: matched.length };
+  const occ = await occupancy(db, rooms.map((r) => r.id));
+  return { listings: locs.map((l) => toListing(l, roomsByLoc.get(l.id) ?? [], occ)), total };
 }
 
 export async function listCities(): Promise<string[]> {

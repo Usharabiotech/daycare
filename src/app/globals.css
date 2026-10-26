@@ -45,6 +45,17 @@ nav.main a { font-weight: 600; font-size: 14px; color: var(--muted); padding: 7p
 nav.main a:hover { background: var(--iris-100); color: var(--accent-text); }
 nav.main a[aria-current="page"] { background: var(--accent); color: var(--accent-ink); }
 .who { margin-left: auto; display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+/* Phones: brand + account on one row, the menu as one swipeable row below, and the header
+   scrolls away with the page instead of pinning a quarter of the screen. */
+@media (max-width: 720px) {
+  header.bar { position: static; }
+  .bar .wrap { gap: 8px 12px; padding-block: 10px 8px; }
+  .who { order: 2; min-width: 0; }
+  .who > span { max-width: 38vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  nav.main { order: 3; flex: 1 0 100%; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  nav.main::-webkit-scrollbar { display: none; }
+  nav.main a { flex: none; white-space: nowrap; }
+}
 main { padding-block: 24px 64px; }
 
 h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; letter-spacing: -.03em; }

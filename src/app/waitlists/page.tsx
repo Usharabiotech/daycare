@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { AGE_GROUPS } from '@/domain/types';
 import { formatWait } from '@/domain/queue';
+import { timeZoneFor } from '@/domain/time';
+import { dateTime } from '@/lib/format';
 import { currentUser } from '@/services/auth';
 import { familyWaitlists } from '@/services/queue';
 import { acceptOfferAction, declineOfferAction, withdrawAction } from '../actions';
@@ -37,7 +39,7 @@ export default async function MyWaitlists({ searchParams }: { searchParams: { ok
             <div className="card" key={o.entry.id} style={{ borderColor: 'var(--good)' }}>
               <div>
                 <h3>{o.location.name} has a space for {o.childName.split(' ')[0]}</h3>
-                <div className="meta">{o.room.name} · {o.location.city} · answer by {o.entry.offerExpiresAt?.toLocaleString('en-CA', { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                <div className="meta">{o.room.name} · {o.location.city} · answer by {dateTime(o.entry.offerExpiresAt, timeZoneFor(o.location.province))}</div>
               </div>
               <div className="row">
                 <form action={acceptOfferAction}><input type="hidden" name="entryId" value={o.entry.id} /><button className="btn primary" type="submit">Accept space</button></form>

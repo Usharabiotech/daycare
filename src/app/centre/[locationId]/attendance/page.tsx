@@ -1,11 +1,13 @@
 import { AGE_GROUPS } from '@/domain/types';
-import { roster } from '@/services/centre';
+import { timeZoneFor } from '@/domain/time';
+import { getLocation, roster } from '@/services/centre';
 import { timeOfDay } from '@/lib/format';
 import { attendanceAction } from '../../../actions';
 import { Flash } from '../../../components/Flash';
 
 export default async function Attendance({ params, searchParams }: { params: { locationId: string }; searchParams: { ok?: string; error?: string } }) {
-  const rows = await roster(params.locationId);
+  const [loc, rows] = await Promise.all([getLocation(params.locationId), roster(params.locationId)]);
+  const tz = timeZoneFor(loc.province);
   const inNow = rows.filter((r) => r.checkedIn && !r.checkedOut).length;
   return (
     <div className="stack">
@@ -26,8 +28,8 @@ export default async function Attendance({ params, searchParams }: { params: { l
                 <tr key={r.booking.id}>
                   <td>{r.childName}</td>
                   <td>{r.room.attrs.ageGroup ? AGE_GROUPS[r.room.attrs.ageGroup].label : r.room.name}</td>
-                  <td className="num">{timeOfDay(r.checkedIn)}</td>
-                  <td className="num">{timeOfDay(r.checkedOut)}</td>
+                  <td className="num">{timeOfDay(r.checkedIn, tz)}</td>
+                  <td className="num">{timeOfDay(r.checkedOut, tz)}</td>
                   <td><span className={`pill ${status[0]}`}>{status[1]}</span></td>
                   <td>
                     <form action={attendanceAction}>

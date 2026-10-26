@@ -10,6 +10,7 @@ import {
 } from './schema';
 import type { AgeGroup } from '@/domain/types';
 import { getProvince, staffRequired } from '@/domain/rules/provinces';
+import { atLocalTime, localDate, timeZoneFor } from '@/domain/time';
 import { refreshPublished } from '@/services/capacity';
 
 interface CentreSeed {
@@ -53,7 +54,6 @@ async function chunkedInsert<T>(rows: T[], fn: (batch: T[]) => Promise<unknown>,
 export async function seed(db: DB = getDb(), now = new Date()) {
   const r = rng(42);
   const pick = <T,>(a: T[]) => a[Math.floor(r() * a.length)];
-  const today = isoDate(now);
 
   // --- Demo family ---------------------------------------------------------
   const [family] = await db.insert(customers).values({ name: 'Priya Sharma', email: 'priya@example.com', phone: '+1 416 555 0142', province: 'ON' }).returning();
@@ -99,11 +99,12 @@ export async function seed(db: DB = getDb(), now = new Date()) {
         startDate: isoDate(monthsAgo(now, 1 + Math.floor(r() * 12))),
         subsidyMonthlyCents: r() < 0.27 ? 15000 + Math.floor(r() * 4) * 5000 : 0,
       }))).returning({ id: bookings.id });
-      // Today's attendance: ~88% checked in
-      const checkIns = bk.filter(() => r() < 0.88).map((b) => {
-        const t = new Date(now); t.setUTCHours(11 + Math.floor(r() * 2), Math.floor(r() * 60), 0, 0);
-        return { bookingId: b.id, day: today, checkInAt: t };
-      });
+      // Today's attendance: ~88% checked in between 7 and 9 a.m. on the centre's own clock
+      const tz = timeZoneFor(c.province);
+      const localToday = localDate(tz, now);
+      const checkIns = bk.filter(() => r() < 0.88).map((b) => ({
+        bookingId: b.id, day: localToday, checkInAt: atLocalTime(tz, localToday, 7 + Math.floor(r() * 2), Math.floor(r() * 60)),
+      }));
       if (checkIns.length) await db.insert(attendance).values(checkIns);
 
       // Staff: enough for full capacity, except Toronto toddler room which is one short (shows a ratio alert)

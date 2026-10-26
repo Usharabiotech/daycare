@@ -16,11 +16,16 @@ export function relTime(d: Date | null | undefined, now = new Date()) {
   return `${Math.round(hrs / 24)} days ago`;
 }
 
-export function timeOfDay(d: Date | null | undefined) {
+/** 24-hour clock time in the centre's time zone, e.g. "07:42". */
+export function timeOfDay(d: Date | null | undefined, timeZone: string) {
   if (!d) return '—';
-  return d.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return d.toLocaleTimeString('en-CA', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone });
 }
 
-export function currentPeriod(now = new Date()) {
-  return now.toISOString().slice(0, 7);
+/** Date and time in the centre's time zone, labelled with it, e.g. "Oct 28, 2026, 1:23 p.m. EDT". */
+export function dateTime(d: Date | null | undefined, timeZone: string) {
+  if (!d) return '—';
+  return d.toLocaleString('en-CA', {
+    month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', timeZone, timeZoneName: 'short',
+  });
 }

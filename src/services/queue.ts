@@ -2,6 +2,7 @@ import { and, eq, inArray, lt, ne } from 'drizzle-orm';
 import { getDb, type Tx } from '@/db/client';
 import { bookings, dependants, locations, queueEntries, resources, type QueueEntry } from '@/db/schema';
 import { estimateWaitMonths, offerExpiry, orderQueue } from '@/domain/queue';
+import { localDate, timeZoneFor } from '@/domain/time';
 import { DomainError, type QueueFlags } from '@/domain/types';
 import { occupancy, openSpaces, refreshPublished } from './capacity';
 
@@ -135,7 +136,7 @@ export async function acceptOffer(entryId: string, actor: { customerId?: string;
     if (entry.status !== 'offered') throw new DomainError('There is no open offer to accept.', 409);
     if (entry.offerExpiresAt && entry.offerExpiresAt < now) throw new DomainError('This offer has expired.', 410);
 
-    const today = now.toISOString().slice(0, 10);
+    const today = localDate(timeZoneFor(location.province), now);
     const [booking] = await tx.insert(bookings).values({
       resourceId: room.id,
       customerId: entry.customerId,

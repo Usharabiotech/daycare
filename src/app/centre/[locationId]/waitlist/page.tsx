@@ -1,4 +1,7 @@
 import { AGE_GROUPS } from '@/domain/types';
+import { localDate, timeZoneFor } from '@/domain/time';
+import { timeOfDay } from '@/lib/format';
+import { getLocation } from '@/services/centre';
 import { locationQueue } from '@/services/queue';
 import { markAcceptedAction, offerSpaceAction } from '../../../actions';
 import { Flash } from '../../../components/Flash';
@@ -6,7 +9,8 @@ import { Flash } from '../../../components/Flash';
 const SHOW = 25;
 
 export default async function Waitlist({ params, searchParams }: { params: { locationId: string }; searchParams: { ok?: string; error?: string; room?: string } }) {
-  const rooms = await locationQueue(params.locationId);
+  const [loc, rooms] = await Promise.all([getLocation(params.locationId), locationQueue(params.locationId)]);
+  const tz = timeZoneFor(loc.province);
   return (
     <div className="stack">
       <Flash searchParams={searchParams} />
@@ -26,12 +30,12 @@ export default async function Waitlist({ params, searchParams }: { params: { loc
                     <td className="num">{position}</td>
                     <td>{childName}</td>
                     <td className="num">{birthDate ?? '—'}</td>
-                    <td className="num">{entry.appliedAt.toISOString().slice(0, 10)}</td>
+                    <td className="num">{localDate(tz, entry.appliedAt)}</td>
                     <td className="num">{entry.desiredStart ?? '—'}</td>
                     <td>
                       {entry.flags.staffChild && <span className="chip">Staff child</span>} {entry.flags.sibling && <span className="chip">Sibling</span>} {entry.flags.needsSubsidy && <span className="chip program">Subsidy</span>}
                     </td>
-                    <td>{entry.status === 'offered' ? `Offer sent · expires ${entry.offerExpiresAt?.toISOString().slice(0, 16).replace('T', ' ')}` : 'Waiting'}</td>
+                    <td>{entry.status === 'offered' && entry.offerExpiresAt ? `Offer sent · expires ${localDate(tz, entry.offerExpiresAt)} ${timeOfDay(entry.offerExpiresAt, tz)}` : entry.status === 'offered' ? 'Offer sent' : 'Waiting'}</td>
                     <td>
                       {entry.status === 'waiting' ? (
                         <form action={offerSpaceAction}>

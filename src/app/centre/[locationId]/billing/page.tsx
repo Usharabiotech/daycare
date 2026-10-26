@@ -1,10 +1,12 @@
-import { billingPreview, invoiceCount } from '@/services/centre';
-import { currentPeriod, money } from '@/lib/format';
+import { localPeriod, timeZoneFor } from '@/domain/time';
+import { billingPreview, getLocation, invoiceCount } from '@/services/centre';
+import { money } from '@/lib/format';
 import { invoicesAction } from '../../../actions';
 import { Flash } from '../../../components/Flash';
 
 export default async function Billing({ params, searchParams }: { params: { locationId: string }; searchParams: { ok?: string; error?: string } }) {
-  const period = currentPeriod();
+  const loc = await getLocation(params.locationId);
+  const period = localPeriod(timeZoneFor(loc.province));
   const [lines, existing] = await Promise.all([billingPreview(params.locationId), invoiceCount(params.locationId, period)]);
   const t = lines.reduce((s, l) => ({ fee: s.fee + l.feeCents, parent: s.parent + l.parentCents, sub: s.sub + l.subsidyCents, prog: s.prog + l.programCents }), { fee: 0, parent: 0, sub: 0, prog: 0 });
   return (
