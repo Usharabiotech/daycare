@@ -1,0 +1,4 @@
+# Not needed in the Vercel runtime bundle — the database is loaded into Neon separately.
+data/
+scripts/
+.data/
