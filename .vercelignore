@@ -1,4 +1,5 @@
-# Not needed in the Vercel runtime bundle — the database is loaded into Neon separately.
-data/
-scripts/
+# The Vercel build loads data into Neon (see "vercel-build" in package.json), so it needs
+# scripts/ and data/ontario/active_facilities.json. Only the raw source spreadsheet and the
+# local embedded database stay out of the upload.
 .data/
+data/ontario/*.xlsx

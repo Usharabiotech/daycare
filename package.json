@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "node scripts/require-env.mjs DATABASE_URL && npm run db:migrate && npm run db:seed && npm run db:import-ontario && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
