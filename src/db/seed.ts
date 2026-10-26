@@ -149,7 +149,7 @@ export async function seed(db: DB = getDb(), now = new Date()) {
 }
 
 export async function resetDb(db: DB = getDb()) {
-  await db.execute(sql`TRUNCATE invoices, attendance, staff, bookings, queue_entries, users, dependants, customers, resources, locations, organizations RESTART IDENTITY CASCADE`);
+  await db.execute(sql`TRUNCATE centre_claims, interests, invoices, attendance, staff, bookings, queue_entries, users, dependants, customers, resources, locations, organizations RESTART IDENTITY CASCADE`);
 }
 
 if (process.argv[1]?.endsWith('seed.ts')) {

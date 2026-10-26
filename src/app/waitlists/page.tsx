@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { AGE_GROUPS } from '@/domain/types';
 import { formatWait } from '@/domain/queue';
-import { timeZoneFor } from '@/domain/time';
+import { localDate, timeZoneFor } from '@/domain/time';
 import { dateTime } from '@/lib/format';
 import { currentUser } from '@/services/auth';
+import { familyInterests } from '@/services/directory';
 import { familyWaitlists } from '@/services/queue';
-import { acceptOfferAction, declineOfferAction, withdrawAction } from '../actions';
+import { acceptOfferAction, declineOfferAction, removeInterestAction, withdrawAction } from '../actions';
 import { Flash } from '../components/Flash';
 
 export default async function MyWaitlists({ searchParams }: { searchParams: { ok?: string; error?: string } }) {
@@ -19,7 +20,7 @@ export default async function MyWaitlists({ searchParams }: { searchParams: { ok
       </div>
     );
   }
-  const entries = await familyWaitlists(user.customerId);
+  const [entries, interested] = await Promise.all([familyWaitlists(user.customerId), familyInterests(user.customerId)]);
   const offers = entries.filter((e) => e.entry.status === 'offered');
   const waiting = entries.filter((e) => e.entry.status === 'waiting').sort((a, b) => a.position - b.position);
 
@@ -70,6 +71,31 @@ export default async function MyWaitlists({ searchParams }: { searchParams: { ok
             </tbody>
           </table>
         </div>
+      </section>
+
+      <section className="stack">
+        <h2>Interest registered</h2>
+        <p className="small">Centres that aren&apos;t on NidHub yet. This isn&apos;t a place on their own waitlist — contact them as well.</p>
+        {interested.length === 0 ? (
+          <p className="small">None yet. Open any centre from <Link href="/">Find care</Link> to register interest.</p>
+        ) : (
+          <div className="tablewrap">
+            <table>
+              <thead><tr><th>Child</th><th>Centre</th><th>Age group</th><th>Registered</th><th></th></tr></thead>
+              <tbody>
+                {interested.map((i) => (
+                  <tr key={i.interest.id}>
+                    <td>{i.childName}</td>
+                    <td><Link href={`/centres/${i.location.id}`}>{i.location.name}</Link><div className="small">{i.location.city}</div></td>
+                    <td>{AGE_GROUPS[i.interest.ageGroup].label}</td>
+                    <td className="num">{localDate(timeZoneFor(i.location.province), i.interest.createdAt)}</td>
+                    <td><form action={removeInterestAction}><input type="hidden" name="interestId" value={i.interest.id} /><button className="btn small" type="submit">Remove</button></form></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   );

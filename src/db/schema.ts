@@ -16,6 +16,7 @@ export const queueStatus = pgEnum('queue_status', ['waiting', 'offered', 'accept
 export const bookingStatus = pgEnum('booking_status', ['active', 'ended']);
 export const userRole = pgEnum('user_role', ['family', 'centre_admin', 'platform_admin']);
 export const invoiceStatus = pgEnum('invoice_status', ['draft', 'issued', 'paid', 'void']);
+export const claimStatus = pgEnum('claim_status', ['pending', 'verified', 'rejected']);
 
 const id = () => uuid('id').primaryKey().defaultRandom();
 const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow();
@@ -170,6 +171,37 @@ export const invoices = pgTable('invoices', {
   status: invoiceStatus('status').notNull().default('draft'),
   createdAt: createdAt(),
 }, (t) => [uniqueIndex('invoices_booking_period_uq').on(t.bookingId, t.period)]);
+
+/**
+ * A family's interest in a public-registry centre that hasn't joined yet. Kept apart from
+ * queueEntries on purpose: it holds no place in the centre's own list and never takes part in
+ * offers or wait estimates. When the centre joins, these families can be invited onto its
+ * real waitlist. One row per child per centre; registering again updates the age group.
+ */
+export const interests = pgTable('interests', {
+  id: id(),
+  locationId: uuid('location_id').notNull().references(() => locations.id),
+  customerId: uuid('customer_id').notNull().references(() => customers.id),
+  dependantId: uuid('dependant_id').notNull().references(() => dependants.id),
+  ageGroup: text('age_group').$type<AgeGroup>().notNull(),
+  createdAt: createdAt(),
+}, (t) => [
+  uniqueIndex('interests_location_dependant_uq').on(t.locationId, t.dependantId),
+  index('interests_customer_idx').on(t.customerId),
+]);
+
+/** An operator asking to take over a directory listing. A person verifies it before access is granted. */
+export const centreClaims = pgTable('centre_claims', {
+  id: id(),
+  locationId: uuid('location_id').notNull().references(() => locations.id),
+  name: text('name').notNull(),
+  role: text('role').notNull(),
+  email: text('email').notNull(),
+  phone: text('phone').notNull(),
+  note: text('note'),
+  status: claimStatus('status').notNull().default('pending'),
+  createdAt: createdAt(),
+}, (t) => [index('centre_claims_location_idx').on(t.locationId)]);
 
 export type Location = typeof locations.$inferSelect;
 export type Resource = typeof resources.$inferSelect;

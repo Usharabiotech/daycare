@@ -1,6 +1,6 @@
 import { and, asc, count, eq, exists, gt, inArray, sql } from 'drizzle-orm';
 import { getDb } from '@/db/client';
-import { locations, resources } from '@/db/schema';
+import { interests, locations, resources } from '@/db/schema';
 import type { Location, Resource } from '@/db/schema';
 import type { AgeGroup } from '@/domain/types';
 import { occupancy, type Occupancy } from './capacity';
@@ -12,6 +12,8 @@ export interface ListingFilter {
   onlyProgram?: boolean;
   /** Max locations to return. The registry has thousands of directory centres, so pages cap this. */
   limit?: number;
+  /** Locations to skip before the page starts (with `limit`). */
+  offset?: number;
 }
 
 export interface ListingRoom {
@@ -37,11 +39,26 @@ export interface Listing {
   /** A public-registry listing not yet claimed by the centre: no live availability or fees. */
   directory: boolean;
   programType: string | null;
+  /** Children registered as interested on NidHub (directory centres only). */
+  interested: number;
   rooms: ListingRoom[];
   updatedAt: Date | null;
 }
 
-function toListing(l: Location, rooms: Resource[], occ: Map<string, Occupancy>): Listing {
+/** Number of children registered as interested, per centre. */
+export async function interestCounts(locationIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (locationIds.length === 0) return out;
+  const rows = await getDb()
+    .select({ locationId: interests.locationId, n: count() })
+    .from(interests)
+    .where(inArray(interests.locationId, locationIds))
+    .groupBy(interests.locationId);
+  for (const r of rows) out.set(r.locationId, Number(r.n));
+  return out;
+}
+
+function toListing(l: Location, rooms: Resource[], occ: Map<string, Occupancy>, interested: Map<string, number>): Listing {
   const lr: ListingRoom[] = rooms.map((r) => ({
     resourceId: r.id,
     name: r.name,
@@ -55,7 +72,8 @@ function toListing(l: Location, rooms: Resource[], occ: Map<string, Occupancy>):
   return {
     locationId: l.id, name: l.name, city: l.city, province: l.province, address: l.address,
     hours: l.hours, baseFeeCents: l.baseFeeCents, inProgram: (l.attrs.fundingPrograms ?? []).length > 0,
-    directory: l.attrs.directory === true, programType: l.attrs.programType ?? null, rooms: lr, updatedAt,
+    directory: l.attrs.directory === true, programType: l.attrs.programType ?? null,
+    interested: interested.get(l.id) ?? 0, rooms: lr, updatedAt,
   };
 }
 
@@ -98,7 +116,7 @@ export async function searchListings(filter: ListingFilter = {}): Promise<Listin
 
   // Several real centres share a name in the same city, so `id` breaks ties to keep pages stable.
   const ordered = db.select().from(locations).where(where).orderBy(asc(locations.city), asc(locations.name), asc(locations.id));
-  const locs = filter.limit ? await ordered.limit(filter.limit) : await ordered;
+  const locs = filter.limit ? await ordered.limit(filter.limit).offset(filter.offset ?? 0) : await ordered;
 
   const rooms = await db
     .select()
@@ -108,8 +126,11 @@ export async function searchListings(filter: ListingFilter = {}): Promise<Listin
   const roomsByLoc = new Map<string, Resource[]>();
   for (const r of rooms) (roomsByLoc.get(r.locationId) ?? roomsByLoc.set(r.locationId, []).get(r.locationId)!).push(r);
 
-  const occ = await occupancy(db, rooms.map((r) => r.id));
-  return { listings: locs.map((l) => toListing(l, roomsByLoc.get(l.id) ?? [], occ)), total };
+  const [occ, interested] = await Promise.all([
+    occupancy(db, rooms.map((r) => r.id)),
+    interestCounts(locs.filter((l) => l.attrs.directory).map((l) => l.id)),
+  ]);
+  return { listings: locs.map((l) => toListing(l, roomsByLoc.get(l.id) ?? [], occ, interested)), total };
 }
 
 export async function listCities(): Promise<string[]> {
@@ -131,6 +152,6 @@ export async function locationAvailability(locationId: string): Promise<Listing 
     .from(resources)
     .where(and(eq(resources.locationId, locationId), eq(resources.isPublic, true)))
     .orderBy(asc(resources.capacity));
-  const occ = await occupancy(db, rooms.map((r) => r.id));
-  return toListing(loc, rooms, occ);
+  const [occ, interested] = await Promise.all([occupancy(db, rooms.map((r) => r.id)), interestCounts([loc.id])]);
+  return toListing(loc, rooms, occ, interested);
 }

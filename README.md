@@ -136,6 +136,21 @@ doesn't contain capacity or availability, and that is each centre's own private 
 gets live availability, offers and the ERP once a real operator claims and publishes it. The demo
 seed centres (with rooms, families and offers) are separate and untouched by the import.
 
+Every centre has a public page at `/centres/<id>` (linked from search) with its registry facts and
+Google Maps links. On a directory centre, a signed-in family can **register interest** per child
+(`interests` table) — shown on My waitlists, counted on the page, and never mixed into real waitlists
+or offers. Owners can ask to **claim** a listing (`centre_claims`, status `pending`); there is no
+admin screen yet, so review requests in the database and call the centre to verify:
+
+```sql
+SELECT c.created_at, l.name AS centre, l.licence_no, c.name, c.role, c.email, c.phone, c.note
+FROM centre_claims c JOIN locations l ON l.id = c.location_id
+WHERE c.status = 'pending' ORDER BY c.created_at;
+```
+
+Because interests and claims point at directory rows, `db:import-ontario -- --reset-ontario` refuses
+to run once any exist; a refresh that updates centres in place by licence number is the next step.
+
 - **Source**: [Licensed child care facilities in Ontario](https://data.ontario.ca/dataset/licensed-child-care-facilities-in-ontario), Ontario Data Catalogue. Updated monthly.
 - **Licence**: Open Government Licence – Ontario. Contains information licensed under the Open Government Licence – Ontario.
 - Other provinces each publish their own dataset in a different format — add one importer per province under `src/db/`. New Brunswick includes spaces by age group and coordinates; BC's set is partial.

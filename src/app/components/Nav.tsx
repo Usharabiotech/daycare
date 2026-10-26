@@ -6,10 +6,11 @@ import { usePathname } from 'next/navigation';
 export function Nav({ isCentre }: { isCentre: boolean }) {
   const path = usePathname();
   const links = [
-    { href: '/', label: 'Find care', match: (p: string) => p === '/' },
+    { href: '/', label: 'Find care', match: (p: string) => p === '/' || p.startsWith('/centres/') },
     { href: '/waitlists', label: 'My waitlists', match: (p: string) => p.startsWith('/waitlists') },
     { href: '/subsidy', label: 'Fees & subsidy', match: (p: string) => p.startsWith('/subsidy') },
-    ...(isCentre ? [{ href: '/centre', label: 'Centre ERP', match: (p: string) => p.startsWith('/centre') }] : []),
+    // `/centre/…` is the ERP; the public `/centres/…` pages belong to Find care.
+    ...(isCentre ? [{ href: '/centre', label: 'Centre ERP', match: (p: string) => p === '/centre' || p.startsWith('/centre/') }] : []),
   ];
   return (
     <nav className="main" aria-label="Main">

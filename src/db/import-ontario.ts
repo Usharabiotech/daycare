@@ -111,6 +111,19 @@ export async function importOntario(db: DB, facilities: Facility[]) {
 }
 
 export async function resetOntario(db: DB) {
+  // Families' interests and owners' claims point at these rows; deleting and re-creating the
+  // centres would orphan them. Refuse rather than lose them — a refresh that updates rows in
+  // place by licence number is what's needed once real families are using the directory.
+  const [{ n: held }] = await db
+    .select({ n: count() })
+    .from(locations)
+    .where(sql`${locations.attrs}->>'source' = ${SOURCE} AND (
+      EXISTS (SELECT 1 FROM interests i WHERE i.location_id = ${locations.id}) OR
+      EXISTS (SELECT 1 FROM centre_claims c WHERE c.location_id = ${locations.id}))`);
+  if (held > 0) {
+    throw new Error(`${held} Ontario centres have families' interests or owners' claims attached. ` +
+      'Resetting would delete them, so nothing was changed.');
+  }
   await db.execute(sql`DELETE FROM resources WHERE location_id IN (SELECT id FROM locations WHERE attrs->>'source' = ${SOURCE})`);
   await db.execute(sql`DELETE FROM locations WHERE attrs->>'source' = ${SOURCE}`);
   await db.execute(sql`DELETE FROM organizations o WHERE NOT EXISTS (SELECT 1 FROM locations l WHERE l.org_id = o.id) AND NOT EXISTS (SELECT 1 FROM users u WHERE u.org_id = o.id)`);

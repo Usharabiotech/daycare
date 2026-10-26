@@ -7,6 +7,7 @@ import { DomainError } from '@/domain/types';
 import { SESSION_COOKIE, requireCentreAdmin, requireFamily } from '@/services/auth';
 import { acceptOffer, declineOffer, joinQueue, offerSpace, withdrawEntry } from '@/services/queue';
 import { generateInvoices, publishAvailability, toggleAttendance, toggleShift } from '@/services/centre';
+import { registerInterest, removeInterest, submitClaim } from '@/services/directory';
 
 /** Runs a mutation, then sends the user back to `path` with a success or error message. */
 async function run(path: string, okMessage: string, fn: () => Promise<unknown>) {
@@ -22,9 +23,14 @@ async function run(path: string, okMessage: string, fn: () => Promise<unknown>) 
 
 const str = (f: FormData, k: string) => String(f.get(k) ?? '');
 
+/** Only same-site paths, so a crafted `?next=` link can't bounce someone to another website. */
+function safeNext(next: string) {
+  return next.startsWith('/') && !next.startsWith('//') && !next.startsWith('/\\') ? next : '/';
+}
+
 export async function signIn(form: FormData) {
   cookies().set(SESSION_COOKIE, str(form, 'userId'), { httpOnly: true, sameSite: 'lax', path: '/' });
-  redirect(str(form, 'next') || '/');
+  redirect(safeNext(str(form, 'next')));
 }
 
 export async function signOut() {
@@ -42,6 +48,37 @@ export async function joinWaitlist(form: FormData) {
       resourceId: str(form, 'resourceId'),
       desiredStart: str(form, 'desiredStart') || null,
       flags: { sibling: form.get('sibling') === 'on' },
+    });
+  });
+}
+
+/** The public page for a centre id taken from a form, or the search page if it isn't a centre id. */
+function centrePage(locationId: string) {
+  return /^[0-9a-f-]{36}$/i.test(locationId) ? `/centres/${locationId}` : '/';
+}
+
+export async function registerInterestAction(form: FormData) {
+  const loc = str(form, 'locationId');
+  await run(centrePage(loc), 'Interest registered. Contact the centre too — this doesn\'t put you on its own waitlist.', async () => {
+    const { customerId } = await requireFamily();
+    await registerInterest({ customerId, locationId: loc, dependantId: str(form, 'dependantId'), ageGroup: str(form, 'ageGroup') });
+  });
+}
+
+export async function removeInterestAction(form: FormData) {
+  const back = str(form, 'back') ? safeNext(str(form, 'back')) : '/waitlists';
+  await run(back, 'Interest removed.', async () => {
+    const { customerId } = await requireFamily();
+    await removeInterest(str(form, 'interestId'), customerId);
+  });
+}
+
+export async function claimCentreAction(form: FormData) {
+  const loc = str(form, 'locationId');
+  await run(centrePage(loc), 'Thanks — we\'ll call you to verify before giving you access to this centre.', async () => {
+    await submitClaim({
+      locationId: loc, name: str(form, 'name'), role: str(form, 'role'),
+      email: str(form, 'email'), phone: str(form, 'phone'), note: str(form, 'note'),
     });
   });
 }
