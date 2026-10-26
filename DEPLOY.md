@@ -35,27 +35,33 @@ From the project folder (`R:\Code\DayCare\extracted\openslot`):
    ```
    The Ontario import (~6,355 centres) runs over the network, so give it a minute.
 
-## 3. Deploy the app (Vercel)
+## 3. Deploy the app (Vercel, from GitHub)
 
-1. Install the CLI and sign in (opens your browser):
-   ```bash
-   npm i -g vercel
-   vercel login
-   ```
-2. From the project folder, link + create the project (accept the defaults — Vercel detects Next.js):
-   ```bash
-   vercel
-   ```
-3. Give Vercel the same database URL for production:
-   ```bash
-   vercel env add DATABASE_URL production
-   ```
-   Paste the **same Neon direct string** when prompted.
-4. Ship it:
-   ```bash
-   vercel --prod
-   ```
-   Vercel prints your live URL (e.g. `https://nidhub-xxxx.vercel.app`). That's the link to send.
+The code lives at **github.com/Usharabiotech/daycare**. Vercel builds it from there.
+
+1. Go to **https://vercel.com/new** and sign in with GitHub.
+2. Under **Import Git Repository**, pick **Usharabiotech/daycare**.
+   If it isn't listed, click **Adjust GitHub App Permissions** and give Vercel access to the
+   Usharabiotech organisation (or just this repo).
+3. Framework preset: **Next.js** (detected automatically). Leave the build settings as they are.
+4. Open **Environment Variables** and add:
+   - Name: `DATABASE_URL`
+   - Value: the **same Neon direct string** from step 1
+5. Click **Deploy**. After about two minutes Vercel gives you a live URL
+   (e.g. `https://daycare-xxxx.vercel.app`). That's the link to send.
+
+From then on, every push to `main` redeploys automatically.
+
+<details><summary>Alternative: deploy from your PC with the Vercel CLI</summary>
+
+```bash
+npm i -g vercel
+vercel login
+vercel
+vercel env add DATABASE_URL production
+vercel --prod
+```
+</details>
 
 ## 4. Share with your brother
 
@@ -69,7 +75,7 @@ Browse **Find care** to see the 6,362 real + demo centres, filter by city, and t
 
 ## Updating it later
 
-- Change code → `vercel --prod` again.
+- Change code → commit and push to `main`; Vercel redeploys on its own.
 - Refresh next month's Ontario data → re-run step 2 with `npm run db:import-ontario -- --reset-ontario`.
 
 ## Notes
